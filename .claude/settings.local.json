@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-expo-app@latest . --template blank-typescript)",
+      "Bash(npx create-expo-app@latest . --template blank-typescript --yes)",
+      "Bash(npx create-expo-app@latest fieldshots-tmp --template blank-typescript)",
+      "Bash(mv fieldshots-tmp/* .)",
+      "Bash(mv fieldshots-tmp/.* .)",
+      "Bash(rm -rf fieldshots-tmp)",
+      "Bash(npx expo:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}
