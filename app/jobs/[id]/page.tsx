@@ -65,7 +65,7 @@ export default function JobDetailPage() {
   // --- Share selected photos via Web Share API ---
   const shareSelected = async () => {
     const selectedPhotos = photos.filter((p) => selected.has(p.id!));
-    const files = selectedPhotos.map((p) => new File([p.blob], `fieldshots-${p.id}.jpg`, { type: 'image/jpeg' }));
+    const files = selectedPhotos.map((p) => new File([p.blob], p.filename ?? `IMG_${p.id}.jpg`, { type: 'image/jpeg' }));
     try {
       if (navigator.canShare?.({ files })) {
         await navigator.share({ files, title: `FieldShots — ${job?.name}` });

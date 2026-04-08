@@ -16,6 +16,7 @@ export interface Photo {
   notes: string;
   takenAt: string;
   hasTimestamp: boolean;
+  filename: string; // e.g. IMG_4378.jpg
 }
 
 export interface Setting {
@@ -35,6 +36,22 @@ class FieldShotsDB extends Dexie {
       photos: '++id, jobId, takenAt',
       settings: 'key',
     });
+    // v2: add filename field to photos
+    this.version(2).stores({
+      jobs: '++id, referenceCode, name, updatedAt',
+      photos: '++id, jobId, takenAt',
+      settings: 'key',
+    }).upgrade(async (tx) => {
+      // Assign IMG filenames to existing photos based on their id
+      await tx.table('photos').toCollection().modify((photo: any) => {
+        if (!photo.filename) {
+          photo.filename = `IMG_${String(photo.id).padStart(4, '0')}.jpg`;
+        }
+      });
+      // Seed the counter based on highest existing id
+      const count = await tx.table('photos').count();
+      await tx.table('settings').put({ key: 'imgCounter', value: String(count) });
+    });
   }
 }
 
@@ -42,11 +59,20 @@ export const db = new FieldShotsDB();
 
 // Seed default settings
 db.on('ready', async () => {
-  const existing = await db.settings.get('showTimestamp');
-  if (!existing) {
-    await db.settings.put({ key: 'showTimestamp', value: 'true' });
-  }
+  const [ts, counter] = await Promise.all([
+    db.settings.get('showTimestamp'),
+    db.settings.get('imgCounter'),
+  ]);
+  if (!ts) await db.settings.put({ key: 'showTimestamp', value: 'true' });
+  if (!counter) await db.settings.put({ key: 'imgCounter', value: '0' });
 });
+
+async function nextImgFilename(): Promise<string> {
+  const row = await db.settings.get('imgCounter');
+  const next = (parseInt(row?.value ?? '0', 10) + 1);
+  await db.settings.put({ key: 'imgCounter', value: String(next) });
+  return `IMG_${String(next).padStart(4, '0')}.jpg`;
+}
 
 // --- Jobs ---
 
@@ -89,15 +115,16 @@ export async function getPhoto(id: number) {
 
 export async function addPhoto(jobId: number, blob: Blob, hasTimestamp: boolean) {
   const now = new Date().toISOString();
-  const id = await db.photos.add({ jobId, blob, notes: '', takenAt: now, hasTimestamp });
+  const filename = await nextImgFilename();
+  const id = await db.photos.add({ jobId, blob, notes: '', takenAt: now, hasTimestamp, filename });
   await db.jobs.update(jobId, { updatedAt: now });
   return id;
 }
 
 export async function addPhotoFromFile(jobId: number, file: File) {
-  // Preserve the file's original modified date if available, otherwise now
   const takenAt = file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString();
-  const id = await db.photos.add({ jobId, blob: file, notes: '', takenAt, hasTimestamp: false });
+  const filename = await nextImgFilename();
+  const id = await db.photos.add({ jobId, blob: file, notes: '', takenAt, hasTimestamp: false, filename });
   await db.jobs.update(jobId, { updatedAt: new Date().toISOString() });
   return id;
 }
