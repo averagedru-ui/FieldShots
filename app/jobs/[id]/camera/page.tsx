@@ -27,11 +27,12 @@ export default function CameraPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
-  // Pinch zoom state
-  const zoomRef = useRef(1);          // current committed zoom
-  const pinchStartDist = useRef(0);   // finger distance when pinch started
-  const pinchStartZoom = useRef(1);   // zoom when pinch started
+  const zoomRef = useRef(1);
+  const pinchStartDist = useRef(0);
+  const pinchStartZoom = useRef(1);
   const [zoom, setZoom] = useState(1);
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [showTimestamp, setShowTimestamp] = useState(true);
   const [facing, setFacing] = useState<'environment' | 'user'>('environment');
@@ -40,16 +41,42 @@ export default function CameraPage() {
   const [now, setNow] = useState(new Date());
   const [error, setError] = useState('');
 
+  const applyZoomToTrack = useCallback(async (zoomLevel: number) => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const caps = track.getCapabilities() as any;
+      if (caps.zoom) {
+        const min = caps.zoom.min ?? 1;
+        const max = caps.zoom.max ?? MAX_ZOOM;
+        await track.applyConstraints({ advanced: [{ zoom: clamp(zoomLevel, min, max) } as any] });
+      }
+    } catch {
+      // Hardware zoom not supported — CSS crop fallback is used in takePhoto
+    }
+  }, []);
+
   const startCamera = useCallback(async (facingMode: 'environment' | 'user') => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
         audio: false,
       });
       streamRef.current = stream;
+
+      // Enable continuous autofocus if supported
+      const track = stream.getVideoTracks()[0];
+      try {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as any] });
+      } catch { /* not supported on all devices */ }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -57,7 +84,7 @@ export default function CameraPage() {
     } catch {
       setError('Camera access denied. Please allow camera access in Safari settings and reload.');
     }
-  }, []);
+  }, [applyZoomToTrack]);
 
   useEffect(() => {
     getSetting('showTimestamp').then((v) => setShowTimestamp(v !== 'false'));
@@ -66,10 +93,42 @@ export default function CameraPage() {
     return () => {
       clearInterval(tick);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (focusTimer.current) clearTimeout(focusTimer.current);
     };
   }, [startCamera]);
 
-  // Pinch-to-zoom touch handlers
+  // Tap to focus
+  const handleTap = useCallback(async (e: React.TouchEvent) => {
+    // Only handle single-finger taps (not pinch end)
+    if (e.changedTouches.length !== 1 || pinchStartDist.current > 0) return;
+
+    const rect = viewportRef.current!.getBoundingClientRect();
+    const touch = e.changedTouches[0];
+    const x = (touch.clientX - rect.left) / rect.width;
+    const y = (touch.clientY - rect.top) / rect.height;
+
+    // Show focus indicator
+    setFocusPoint({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
+    if (focusTimer.current) clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => setFocusPoint(null), 1200);
+
+    // Apply focus point to camera track if supported
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      await track.applyConstraints({
+        advanced: [{ focusMode: 'single-shot', focusPointOfInterest: { x, y } } as any],
+      });
+      // Return to continuous after a moment
+      setTimeout(async () => {
+        try {
+          await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as any] });
+        } catch { /* ok */ }
+      }, 1500);
+    } catch { /* not supported */ }
+  }, []);
+
+  // Pinch zoom
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -89,8 +148,9 @@ export default function CameraPage() {
       const newZoom = clamp(pinchStartZoom.current * scale, MIN_ZOOM, MAX_ZOOM);
       zoomRef.current = newZoom;
       setZoom(newZoom);
+      applyZoomToTrack(newZoom);
     }
-  }, []);
+  }, [applyZoomToTrack]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
     if (e.touches.length < 2) {
@@ -101,7 +161,6 @@ export default function CameraPage() {
   const flipCamera = () => {
     const next = facing === 'environment' ? 'user' : 'environment';
     setFacing(next);
-    // Reset zoom on flip
     zoomRef.current = 1;
     setZoom(1);
     startCamera(next);
@@ -116,17 +175,27 @@ export default function CameraPage() {
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
 
-    // Apply zoom by cropping the centre of the video frame
-    const z = zoomRef.current;
-    const cropW = vw / z;
-    const cropH = vh / z;
-    const cropX = (vw - cropW) / 2;
-    const cropY = (vh - cropH) / 2;
+    // CSS-crop zoom fallback for devices without hardware zoom
+    const track = streamRef.current?.getVideoTracks()[0];
+    const caps = track?.getCapabilities() as any;
+    const hasHardwareZoom = !!caps?.zoom;
 
     canvas.width = vw;
     canvas.height = vh;
     const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, vw, vh);
+
+    if (hasHardwareZoom) {
+      // Hardware already zoomed — draw full frame
+      ctx.drawImage(video, 0, 0);
+    } else {
+      // Software crop to simulate zoom
+      const z = zoomRef.current;
+      const cropW = vw / z;
+      const cropH = vh / z;
+      const cropX = (vw - cropW) / 2;
+      const cropY = (vh - cropH) / 2;
+      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, vw, vh);
+    }
 
     canvas.toBlob(async (blob) => {
       if (blob) {
@@ -159,7 +228,6 @@ export default function CameraPage() {
           className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white text-lg"
         >✕</button>
 
-        {/* Zoom indicator — only show when zoomed in */}
         {zoom > 1.05 && (
           <div className="bg-black/60 px-3 py-1 rounded-full">
             <span className="text-white text-sm font-bold font-mono">{zoom.toFixed(1)}×</span>
@@ -172,13 +240,13 @@ export default function CameraPage() {
         >🕐</button>
       </div>
 
-      {/* Camera feed with pinch-to-zoom */}
+      {/* Camera feed */}
       <div
         ref={viewportRef}
         className="relative flex-1 overflow-hidden"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
+        onTouchEnd={(e) => { onTouchEnd(e); handleTap(e); }}
         style={{ touchAction: 'none' }}
       >
         <video
@@ -197,6 +265,22 @@ export default function CameraPage() {
           }}
         />
         <canvas ref={canvasRef} className="hidden" />
+
+        {/* Tap-to-focus indicator */}
+        {focusPoint && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: focusPoint.x - 28,
+              top: focusPoint.y - 28,
+              width: 56,
+              height: 56,
+              border: '2px solid #4CAF50',
+              borderRadius: 6,
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.3)',
+            }}
+          />
+        )}
 
         {/* Timestamp overlay */}
         {showTimestamp && (
