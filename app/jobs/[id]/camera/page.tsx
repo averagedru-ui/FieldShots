@@ -116,13 +116,6 @@ export default function CameraPage() {
         <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover absolute inset-0" />
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* Timestamp overlay (display only) */}
-        {showTimestamp && (
-          <div className="absolute bottom-28 left-3 bg-black/55 px-2 py-1 rounded text-white text-xs font-mono pointer-events-none">
-            {formatTimestamp(now)}
-          </div>
-        )}
-
         {/* Top controls */}
         <div className="absolute top-0 left-0 right-0 flex justify-between items-center p-4" style={{ paddingTop: 'max(16px, env(safe-area-inset-top))' }}>
           <button onClick={() => router.back()} className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white text-lg">✕</button>
@@ -134,17 +127,24 @@ export default function CameraPage() {
           </button>
         </div>
 
-        {/* Bottom controls */}
-        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-around px-8 pb-safe" style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
-          <button onClick={flipCamera} className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center text-2xl">⟳</button>
+        {/* Bottom controls — fixed height bar so shutter never gets clipped */}
+        <div
+          className="absolute bottom-0 left-0 right-0 bg-black/70 flex items-center justify-around px-8"
+          style={{
+            paddingBottom: 'max(28px, env(safe-area-inset-bottom))',
+            paddingTop: 20,
+            minHeight: 120,
+          }}
+        >
+          <button onClick={flipCamera} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl text-white">⟳</button>
 
           <button
             onClick={takePhoto}
             disabled={taking}
-            className="w-18 h-18 rounded-full border-4 border-white flex items-center justify-center disabled:opacity-50"
-            style={{ width: 72, height: 72 }}
+            className="rounded-full border-4 border-white flex items-center justify-center disabled:opacity-50 flex-shrink-0"
+            style={{ width: 76, height: 76 }}
           >
-            <div className={`w-14 h-14 rounded-full ${taking ? 'bg-white/60' : 'bg-white'}`} />
+            <div className={`rounded-full flex-shrink-0 ${taking ? 'bg-white/60' : 'bg-white'}`} style={{ width: 58, height: 58 }} />
           </button>
 
           <div className="w-12 h-12 flex flex-col items-center justify-center">
@@ -156,6 +156,13 @@ export default function CameraPage() {
             )}
           </div>
         </div>
+
+        {/* Timestamp overlay — sits just above the bottom bar */}
+        {showTimestamp && (
+          <div className="absolute left-3 bg-black/55 px-2 py-1 rounded text-white text-xs font-mono pointer-events-none" style={{ bottom: 'calc(max(28px, env(safe-area-inset-bottom)) + 130px)' }}>
+            {formatTimestamp(now)}
+          </div>
+        )}
       </div>
     </div>
   );
