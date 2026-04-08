@@ -71,22 +71,8 @@ export default function CameraPage() {
     canvas.height = video.videoHeight || 720;
 
     const ctx = canvas.getContext('2d')!;
+    // Always save the raw photo — timestamp is stored as a flag and applied at display/PDF time
     ctx.drawImage(video, 0, 0);
-
-    if (showTimestamp) {
-      const ts = formatTimestamp(new Date());
-      const fontSize = Math.round(canvas.width * 0.022);
-      ctx.font = `bold ${fontSize}px monospace`;
-      const padding = Math.round(fontSize * 0.5);
-      const textW = ctx.measureText(ts).width;
-      const boxX = padding;
-      const boxY = canvas.height - padding * 3;
-
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(boxX - 6, boxY - fontSize, textW + 12, fontSize * 1.6);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(ts, boxX, boxY + fontSize * 0.4);
-    }
 
     canvas.toBlob(async (blob) => {
       if (blob) {

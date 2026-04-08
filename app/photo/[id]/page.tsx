@@ -1,8 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { getPhoto, updatePhotoNotes, deletePhoto, blobToUrl, Photo } from '@/lib/db';
+import { getPhoto, updatePhotoNotes, deletePhoto, blobToUrl, Photo, db } from '@/lib/db';
 import { Suspense } from 'react';
+
+function formatTimestamp(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+}
 
 function PhotoDetailInner() {
   const { id } = useParams<{ id: string }>();
@@ -33,6 +40,13 @@ function PhotoDetailInner() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const toggleTimestamp = async () => {
+    if (!photo) return;
+    const next = !photo.hasTimestamp;
+    await db.photos.update(photoId, { hasTimestamp: next });
+    setPhoto({ ...photo, hasTimestamp: next });
+  };
+
   const confirmDelete = () => {
     if (!confirm('Delete this photo permanently?')) return;
     deletePhoto(photoId).then(() => router.back());
@@ -49,22 +63,35 @@ function PhotoDetailInner() {
       </header>
 
       <main className="flex-1 pb-8">
-        {/* Full width image */}
-        <div className="bg-black">
-          <img src={url} alt="" className="w-full max-h-[60vw] object-contain" style={{ maxHeight: '60vh' }} />
+        {/* Photo with optional timestamp overlay */}
+        <div className="bg-black relative">
+          <img src={url} alt="" className="w-full object-contain" style={{ maxHeight: '60vh' }} />
+          {photo.hasTimestamp && (
+            <div className="absolute bottom-2 left-2 bg-black/55 px-2 py-1 rounded text-white text-xs font-mono pointer-events-none">
+              {formatTimestamp(photo.takenAt)}
+            </div>
+          )}
         </div>
 
-        {/* Meta */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#2A2A2A]">
+        {/* Meta row */}
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#2A2A2A]">
           <span className="text-[#888] text-sm">
             {new Date(photo.takenAt).toLocaleString('en-GB', {
               day: '2-digit', month: 'short', year: 'numeric',
               hour: '2-digit', minute: '2-digit', hour12: false,
             })}
           </span>
-          {photo.hasTimestamp && (
-            <span className="bg-[#1E3A2F] text-[#4CAF50] text-xs px-2 py-0.5 rounded font-bold">Timestamp</span>
-          )}
+          {/* Timestamp toggle */}
+          <button
+            onClick={toggleTimestamp}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+              photo.hasTimestamp
+                ? 'bg-[#1E3A2F] text-[#4CAF50]'
+                : 'bg-[#2A2A2A] text-[#666]'
+            }`}
+          >
+            🕐 {photo.hasTimestamp ? 'Timestamp on' : 'Timestamp off'}
+          </button>
         </div>
 
         {/* Notes */}
@@ -78,7 +105,7 @@ function PhotoDetailInner() {
           />
           <button
             onClick={saveNotes}
-            className={`w-full rounded-xl py-4 font-bold text-base ${saved ? 'bg-[#2E7D32]' : 'bg-[#4CAF50]'} text-white`}
+            className={`w-full rounded-xl py-4 font-bold text-base text-white transition-colors ${saved ? 'bg-[#2E7D32]' : 'bg-[#4CAF50]'}`}
           >
             {saved ? '✓ Saved' : 'Save Notes'}
           </button>

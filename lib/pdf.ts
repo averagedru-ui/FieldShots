@@ -9,10 +9,26 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+function getImageDimensions(dataUrl: string): Promise<{ w: number; h: number }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => resolve({ w: 4, h: 3 }); // fallback aspect ratio
+    img.src = dataUrl;
+  });
+}
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+}
+
+function formatTimestamp(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });
 }
 
@@ -22,6 +38,8 @@ export async function generatePDFBlob(job: Job, photos: Photo[]): Promise<Blob> 
   const W = 210;
   const margin = 16;
   const contentW = W - margin * 2;
+  // Max image height — never exceed this so there's room for notes + page breaks
+  const maxImgH = 120;
   let y = 0;
 
   // Header
@@ -64,13 +82,26 @@ export async function generatePDFBlob(job: Job, photos: Photo[]): Promise<Blob> 
   for (let i = 0; i < photos.length; i++) {
     const photo = photos[i];
 
-    // Page break check — leave enough room for at minimum photo number + small image
-    if (y > 260) {
+    let dataUrl = '';
+    let imgH = 60;
+
+    try {
+      dataUrl = await blobToDataUrl(photo.blob);
+      // Calculate height that preserves the photo's actual aspect ratio
+      const { w, h } = await getImageDimensions(dataUrl);
+      const ratio = h / w;
+      imgH = Math.min(contentW * ratio, maxImgH);
+    } catch {
+      // handled below
+    }
+
+    const blockH = 10 + imgH + (photo.notes ? 20 : 0) + 10;
+    if (y + blockH > 277) {
       doc.addPage();
       y = 16;
     }
 
-    // Photo number badge
+    // Photo number + date
     doc.setFillColor(46, 125, 50);
     doc.roundedRect(margin, y, 18, 7, 2, 2, 'F');
     doc.setTextColor(255, 255, 255);
@@ -78,7 +109,6 @@ export async function generatePDFBlob(job: Job, photos: Photo[]): Promise<Blob> 
     doc.setFont('helvetica', 'bold');
     doc.text(`#${i + 1}`, margin + 9, y + 5, { align: 'center' });
 
-    // Date
     doc.setTextColor(120, 120, 120);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
@@ -86,19 +116,21 @@ export async function generatePDFBlob(job: Job, photos: Photo[]): Promise<Blob> 
     y += 10;
 
     // Image
-    try {
-      const dataUrl = await blobToDataUrl(photo.blob);
-      const imgH = 80;
-      doc.addImage(dataUrl, 'JPEG', margin, y, contentW, imgH, undefined, 'FAST');
-      y += imgH + 3;
-    } catch {
+    if (dataUrl) {
+      // If hasTimestamp, burn the timestamp onto a canvas before adding to PDF
+      let finalDataUrl = dataUrl;
+      if (photo.hasTimestamp) {
+        finalDataUrl = await burnTimestampForPDF(dataUrl, formatTimestamp(photo.takenAt));
+      }
+      doc.addImage(finalDataUrl, 'JPEG', margin, y, contentW, imgH, undefined, 'FAST');
+    } else {
       doc.setFillColor(240, 240, 240);
-      doc.rect(margin, y, contentW, 30, 'F');
+      doc.rect(margin, y, contentW, imgH, 'F');
       doc.setTextColor(160, 160, 160);
       doc.setFontSize(9);
-      doc.text('Image unavailable', W / 2, y + 16, { align: 'center' });
-      y += 33;
+      doc.text('Image unavailable', W / 2, y + imgH / 2, { align: 'center' });
     }
+    y += imgH + 3;
 
     // Notes
     if (photo.notes) {
@@ -115,12 +147,41 @@ export async function generatePDFBlob(job: Job, photos: Photo[]): Promise<Blob> 
     y += 6;
   }
 
-  // Footer on last page
+  // Footer
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 180);
   doc.text(`FieldShots · ${job.referenceCode} · ${formatDate(new Date().toISOString())}`, W / 2, 290, { align: 'center' });
 
   return doc.output('blob');
+}
+
+async function burnTimestampForPDF(dataUrl: string, ts: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+
+      const fontSize = Math.round(canvas.width * 0.022);
+      ctx.font = `bold ${fontSize}px monospace`;
+      const padding = Math.round(fontSize * 0.5);
+      const textW = ctx.measureText(ts).width;
+      const boxX = padding;
+      const boxY = canvas.height - padding * 3;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(boxX - 6, boxY - fontSize, textW + 12, fontSize * 1.6);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(ts, boxX, boxY + fontSize * 0.4);
+
+      resolve(canvas.toDataURL('image/jpeg', 0.88));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }
 
 export async function sharePDF(job: Job, photos: Photo[]) {
@@ -130,7 +191,6 @@ export async function sharePDF(job: Job, photos: Photo[]) {
   if (navigator.canShare?.({ files: [file] })) {
     await navigator.share({ files: [file], title: `FieldShots - ${job.name}` });
   } else {
-    // Fallback: download
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -144,7 +204,6 @@ export async function emailPDF(job: Job, photos: Photo[]) {
   const blob = await generatePDFBlob(job, photos);
   const file = new File([blob], `FieldShots-${job.referenceCode}.pdf`, { type: 'application/pdf' });
 
-  // Try Web Share API with file (works on iOS Safari)
   if (navigator.canShare?.({ files: [file] })) {
     await navigator.share({
       files: [file],
@@ -152,7 +211,6 @@ export async function emailPDF(job: Job, photos: Photo[]) {
       text: `Please find attached the FieldShots photo report for job ${job.referenceCode}: ${job.name}.`,
     });
   } else {
-    // Fallback: mailto with no attachment (browsers can't attach files to mailto)
     const subject = encodeURIComponent(`FieldShots Report — ${job.name} (${job.referenceCode})`);
     const body = encodeURIComponent(`Please find attached the FieldShots report for job ${job.referenceCode}: ${job.name}.\n\nGenerated by FieldShots.`);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
