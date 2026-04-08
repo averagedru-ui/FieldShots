@@ -3,11 +3,18 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { addPhoto, getSetting } from '@/lib/db';
 
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 5;
+
 function formatTimestamp(date: Date) {
   return date.toLocaleString('en-GB', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });
+}
+
+function clamp(val: number, min: number, max: number) {
+  return Math.min(Math.max(val, min), max);
 }
 
 export default function CameraPage() {
@@ -18,6 +25,13 @@ export default function CameraPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  // Pinch zoom state
+  const zoomRef = useRef(1);          // current committed zoom
+  const pinchStartDist = useRef(0);   // finger distance when pinch started
+  const pinchStartZoom = useRef(1);   // zoom when pinch started
+  const [zoom, setZoom] = useState(1);
 
   const [showTimestamp, setShowTimestamp] = useState(true);
   const [facing, setFacing] = useState<'environment' | 'user'>('environment');
@@ -55,9 +69,41 @@ export default function CameraPage() {
     };
   }, [startCamera]);
 
+  // Pinch-to-zoom touch handlers
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDist.current = Math.hypot(dx, dy);
+      pinchStartZoom.current = zoomRef.current;
+    }
+  }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const scale = dist / pinchStartDist.current;
+      const newZoom = clamp(pinchStartZoom.current * scale, MIN_ZOOM, MAX_ZOOM);
+      zoomRef.current = newZoom;
+      setZoom(newZoom);
+    }
+  }, []);
+
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      pinchStartDist.current = 0;
+    }
+  }, []);
+
   const flipCamera = () => {
     const next = facing === 'environment' ? 'user' : 'environment';
     setFacing(next);
+    // Reset zoom on flip
+    zoomRef.current = 1;
+    setZoom(1);
     startCamera(next);
   };
 
@@ -67,12 +113,20 @@ export default function CameraPage() {
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    const vw = video.videoWidth || 1280;
+    const vh = video.videoHeight || 720;
 
+    // Apply zoom by cropping the centre of the video frame
+    const z = zoomRef.current;
+    const cropW = vw / z;
+    const cropH = vh / z;
+    const cropX = (vw - cropW) / 2;
+    const cropY = (vh - cropH) / 2;
+
+    canvas.width = vw;
+    canvas.height = vh;
     const ctx = canvas.getContext('2d')!;
-    // Always save the raw photo — timestamp is stored as a flag and applied at display/PDF time
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, vw, vh);
 
     canvas.toBlob(async (blob) => {
       if (blob) {
@@ -93,7 +147,6 @@ export default function CameraPage() {
   }
 
   return (
-    // Use 100dvh so it fills the full dynamic viewport on iOS (excludes browser chrome)
     <div className="flex flex-col bg-black" style={{ height: '100dvh' }}>
 
       {/* Top controls */}
@@ -105,20 +158,43 @@ export default function CameraPage() {
           onClick={() => router.back()}
           className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white text-lg"
         >✕</button>
+
+        {/* Zoom indicator — only show when zoomed in */}
+        {zoom > 1.05 && (
+          <div className="bg-black/60 px-3 py-1 rounded-full">
+            <span className="text-white text-sm font-bold font-mono">{zoom.toFixed(1)}×</span>
+          </div>
+        )}
+
         <button
           onClick={() => setShowTimestamp((v) => !v)}
           className={`w-10 h-10 rounded-full flex items-center justify-center text-lg transition-opacity ${showTimestamp ? 'bg-white/20' : 'bg-white/10 opacity-40'}`}
         >🕐</button>
       </div>
 
-      {/* Camera feed — fills all remaining space */}
-      <div className="relative flex-1 overflow-hidden">
+      {/* Camera feed with pinch-to-zoom */}
+      <div
+        ref={viewportRef}
+        className="relative flex-1 overflow-hidden"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{ touchAction: 'none' }}
+      >
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            display: 'block',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'center center',
+            transition: 'transform 0.05s linear',
+          }}
         />
         <canvas ref={canvasRef} className="hidden" />
 
@@ -130,7 +206,7 @@ export default function CameraPage() {
         )}
       </div>
 
-      {/* Bottom controls — always fully visible above home indicator */}
+      {/* Bottom controls */}
       <div
         className="flex-shrink-0 bg-black flex items-center justify-around px-8"
         style={{
@@ -139,13 +215,11 @@ export default function CameraPage() {
           minHeight: 130,
         }}
       >
-        {/* Flip */}
         <button
           onClick={flipCamera}
           className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl text-white flex-shrink-0"
         >⟳</button>
 
-        {/* Shutter */}
         <button
           onClick={takePhoto}
           disabled={taking}
@@ -158,7 +232,6 @@ export default function CameraPage() {
           />
         </button>
 
-        {/* Count */}
         <div className="w-12 h-12 flex flex-col items-center justify-center flex-shrink-0">
           {count > 0 && (
             <>
