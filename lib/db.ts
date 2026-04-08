@@ -94,6 +94,14 @@ export async function addPhoto(jobId: number, blob: Blob, hasTimestamp: boolean)
   return id;
 }
 
+export async function addPhotoFromFile(jobId: number, file: File) {
+  // Preserve the file's original modified date if available, otherwise now
+  const takenAt = file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString();
+  const id = await db.photos.add({ jobId, blob: file, notes: '', takenAt, hasTimestamp: false });
+  await db.jobs.update(jobId, { updatedAt: new Date().toISOString() });
+  return id;
+}
+
 export async function updatePhotoNotes(id: number, notes: string) {
   return db.photos.update(id, { notes });
 }
