@@ -83,19 +83,40 @@ export async function generatePDFBlob(job: Job, photos: Photo[]): Promise<Blob> 
     const photo = photos[i];
 
     let dataUrl = '';
-    let imgH = 60;
+    let imgW = contentW;
+    let imgH = 80;
 
     try {
       dataUrl = await blobToDataUrl(photo.blob);
-      // Calculate height that preserves the photo's actual aspect ratio
       const { w, h } = await getImageDimensions(dataUrl);
-      const ratio = h / w;
-      imgH = Math.min(contentW * ratio, maxImgH);
+      const aspectRatio = w / h;
+
+      if (aspectRatio >= 1) {
+        // Landscape photo: full content width, height from ratio
+        imgW = contentW;
+        imgH = contentW / aspectRatio;
+        // Cap so it doesn't overflow the page
+        if (imgH > 160) {
+          imgH = 160;
+          imgW = imgH * aspectRatio;
+        }
+      } else {
+        // Portrait photo: limit height, shrink width to match
+        imgH = 200;
+        imgW = imgH * aspectRatio;
+        // If too wide for the page, scale down
+        if (imgW > contentW) {
+          imgW = contentW;
+          imgH = imgW / aspectRatio;
+        }
+      }
     } catch {
       // handled below
     }
 
-    const blockH = 10 + imgH + (photo.notes ? 20 : 0) + 10;
+    const noteLines = photo.notes ? doc.splitTextToSize(photo.notes, contentW - 8) : [];
+    const noteH = noteLines.length > 0 ? noteLines.length * 5 + 6 : 0;
+    const blockH = 10 + imgH + noteH + 10;
     if (y + blockH > 277) {
       doc.addPage();
       y = 16;
@@ -115,14 +136,14 @@ export async function generatePDFBlob(job: Job, photos: Photo[]): Promise<Blob> 
     doc.text(formatDate(photo.takenAt), margin + 22, y + 5);
     y += 10;
 
-    // Image
+    // Image — centre horizontally if narrower than content width
+    const imgX = margin + (contentW - imgW) / 2;
     if (dataUrl) {
-      // If hasTimestamp, burn the timestamp onto a canvas before adding to PDF
       let finalDataUrl = dataUrl;
       if (photo.hasTimestamp) {
         finalDataUrl = await burnTimestampForPDF(dataUrl, formatTimestamp(photo.takenAt));
       }
-      doc.addImage(finalDataUrl, 'JPEG', margin, y, contentW, imgH, undefined, 'FAST');
+      doc.addImage(finalDataUrl, 'JPEG', imgX, y, imgW, imgH, undefined, 'FAST');
     } else {
       doc.setFillColor(240, 240, 240);
       doc.rect(margin, y, contentW, imgH, 'F');
@@ -133,10 +154,8 @@ export async function generatePDFBlob(job: Job, photos: Photo[]): Promise<Blob> 
     y += imgH + 3;
 
     // Notes
-    if (photo.notes) {
+    if (noteLines.length > 0) {
       doc.setFillColor(248, 248, 248);
-      const noteLines = doc.splitTextToSize(photo.notes, contentW - 8);
-      const noteH = noteLines.length * 5 + 6;
       doc.roundedRect(margin, y, contentW, noteH, 2, 2, 'F');
       doc.setTextColor(50, 50, 50);
       doc.setFontSize(9);
