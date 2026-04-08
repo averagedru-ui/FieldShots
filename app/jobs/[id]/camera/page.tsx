@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { addPhoto, getSetting } from '@/lib/db';
+import { IconX, IconClock, IconFlipCamera } from '@/components/Icons';
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 5;
@@ -225,8 +226,8 @@ export default function CameraPage() {
       >
         <button
           onClick={() => router.back()}
-          className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white text-lg"
-        >✕</button>
+          className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white"
+        ><IconX size={18} strokeWidth={2.5} /></button>
 
         {zoom > 1.05 && (
           <div className="bg-black/60 px-3 py-1 rounded-full">
@@ -236,8 +237,8 @@ export default function CameraPage() {
 
         <button
           onClick={() => setShowTimestamp((v) => !v)}
-          className={`w-10 h-10 rounded-full flex items-center justify-center text-lg transition-opacity ${showTimestamp ? 'bg-white/20' : 'bg-white/10 opacity-40'}`}
-        >🕐</button>
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-opacity ${showTimestamp ? 'bg-white/20 text-white' : 'bg-white/10 text-white opacity-40'}`}
+        ><IconClock size={20} strokeWidth={1.75} /></button>
       </div>
 
       {/* Camera feed */}
@@ -301,8 +302,8 @@ export default function CameraPage() {
       >
         <button
           onClick={flipCamera}
-          className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl text-white flex-shrink-0"
-        >⟳</button>
+          className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white flex-shrink-0"
+        ><IconFlipCamera size={22} strokeWidth={1.75} /></button>
 
         <button
           onClick={takePhoto}

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { searchAll, blobToUrl, Job, Photo } from '@/lib/db';
+import { IconSearch, IconX, IconClipboard } from '@/components/Icons';
 
 export default function SearchPage() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function SearchPage() {
     <div className="flex flex-col min-h-screen bg-[#121212]">
       <header className="flex items-center gap-3 px-4 bg-[#1A1A1A] border-b border-[#2A2A2A] sticky top-0 z-10" style={{ paddingTop: 'max(16px, env(safe-area-inset-top))', paddingBottom: '12px' }}>
         <div className="flex-1 flex items-center gap-2 bg-[#2A2A2A] rounded-xl px-3 py-2">
-          <span className="text-[#888]">🔍</span>
+          <IconSearch size={16} className="text-[#888] flex-shrink-0" />
           <input
             autoFocus
             className="flex-1 bg-transparent text-white text-base outline-none placeholder-[#555]"
@@ -34,7 +35,11 @@ export default function SearchPage() {
             value={query}
             onChange={(e) => doSearch(e.target.value)}
           />
-          {query && <button onClick={() => doSearch('')} className="text-[#555] text-lg">✕</button>}
+          {query && (
+            <button onClick={() => doSearch('')} className="text-[#555]">
+              <IconX size={16} strokeWidth={2.5} />
+            </button>
+          )}
         </div>
         <button onClick={() => router.back()} className="text-[#4CAF50] text-sm font-semibold">Done</button>
       </header>
@@ -51,7 +56,9 @@ export default function SearchPage() {
             <p className="text-[#aaa] text-xs font-bold uppercase tracking-widest px-4 py-3">Jobs ({jobs.length})</p>
             {jobs.map((job) => (
               <Link key={job.id} href={`/jobs/${job.id}`} className="flex items-center gap-3 px-4 py-3 bg-[#1A1A1A] mx-4 mb-2 rounded-xl">
-                <div className="w-10 h-10 rounded-xl bg-[#1E3A2F] flex items-center justify-center text-xl">📋</div>
+                <div className="w-10 h-10 rounded-xl bg-[#1E3A2F] flex items-center justify-center text-[#4CAF50]">
+                  <IconClipboard size={20} strokeWidth={1.5} />
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[#4CAF50] text-xs font-bold uppercase tracking-widest">{job.referenceCode}</p>
                   <p className="text-white font-medium truncate">{job.name}</p>

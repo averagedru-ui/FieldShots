@@ -1,8 +1,8 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { getPhoto, updatePhotoNotes, deletePhoto, blobToUrl, Photo, db } from '@/lib/db';
-import { Suspense } from 'react';
+import { IconChevronLeft, IconClock, IconCheck } from '@/components/Icons';
 
 function formatTimestamp(iso: string) {
   return new Date(iso).toLocaleString('en-GB', {
@@ -15,7 +15,6 @@ function PhotoDetailInner() {
   const { id } = useParams<{ id: string }>();
   const photoId = Number(id);
   const searchParams = useSearchParams();
-  const jobId = searchParams.get('jobId');
   const router = useRouter();
 
   const [photo, setPhoto] = useState<Photo | null>(null);
@@ -25,11 +24,7 @@ function PhotoDetailInner() {
 
   useEffect(() => {
     getPhoto(photoId).then((p) => {
-      if (p) {
-        setPhoto(p);
-        setNotes(p.notes ?? '');
-        setUrl(blobToUrl(p.blob));
-      }
+      if (p) { setPhoto(p); setNotes(p.notes ?? ''); setUrl(blobToUrl(p.blob)); }
     });
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [photoId]);
@@ -56,14 +51,20 @@ function PhotoDetailInner() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#121212]">
-      <header className="flex items-center gap-3 px-4 bg-[#1A1A1A] border-b border-[#2A2A2A] sticky top-0 z-10" style={{ paddingTop: 'max(16px, env(safe-area-inset-top))', paddingBottom: '12px' }}>
-        <button onClick={() => router.back()} className="text-[#4CAF50] text-sm font-semibold">‹ Back</button>
-        <h1 className="flex-1 text-center font-bold">Photo</h1>
+      <header
+        className="flex items-center gap-3 px-4 bg-[#1A1A1A] border-b border-[#2A2A2A] sticky top-0 z-10"
+        style={{ paddingTop: 'max(16px, env(safe-area-inset-top))', paddingBottom: '12px' }}
+      >
+        <button onClick={() => router.back()} className="text-[#4CAF50] flex items-center gap-0.5 text-sm font-semibold">
+          <IconChevronLeft size={18} strokeWidth={2.5} /> Back
+        </button>
+        <h1 className="flex-1 text-center font-bold">
+          {photo.filename ?? 'Photo'}
+        </h1>
         <button onClick={confirmDelete} className="text-red-400 text-sm font-semibold">Delete</button>
       </header>
 
       <main className="flex-1 pb-8">
-        {/* Photo with optional timestamp overlay */}
         <div className="bg-black relative">
           <img src={url} alt="" className="w-full object-contain" style={{ maxHeight: '60vh' }} />
           {photo.hasTimestamp && (
@@ -73,7 +74,6 @@ function PhotoDetailInner() {
           )}
         </div>
 
-        {/* Meta row */}
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#2A2A2A]">
           <span className="text-[#888] text-sm">
             {new Date(photo.takenAt).toLocaleString('en-GB', {
@@ -81,20 +81,17 @@ function PhotoDetailInner() {
               hour: '2-digit', minute: '2-digit', hour12: false,
             })}
           </span>
-          {/* Timestamp toggle */}
           <button
             onClick={toggleTimestamp}
             className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
-              photo.hasTimestamp
-                ? 'bg-[#1E3A2F] text-[#4CAF50]'
-                : 'bg-[#2A2A2A] text-[#666]'
+              photo.hasTimestamp ? 'bg-[#1E3A2F] text-[#4CAF50]' : 'bg-[#2A2A2A] text-[#666]'
             }`}
           >
-            🕐 {photo.hasTimestamp ? 'Timestamp on' : 'Timestamp off'}
+            <IconClock size={13} strokeWidth={2} />
+            {photo.hasTimestamp ? 'Timestamp on' : 'Timestamp off'}
           </button>
         </div>
 
-        {/* Notes */}
         <div className="p-4 space-y-3">
           <label className="text-[#aaa] text-xs font-bold uppercase tracking-wider block">Notes</label>
           <textarea
@@ -105,9 +102,10 @@ function PhotoDetailInner() {
           />
           <button
             onClick={saveNotes}
-            className={`w-full rounded-xl py-4 font-bold text-base text-white transition-colors ${saved ? 'bg-[#2E7D32]' : 'bg-[#4CAF50]'}`}
+            className={`w-full rounded-xl py-4 font-bold text-base text-white transition-colors flex items-center justify-center gap-2 ${saved ? 'bg-[#2E7D32]' : 'bg-[#4CAF50]'}`}
           >
-            {saved ? '✓ Saved' : 'Save Notes'}
+            {saved && <IconCheck size={18} strokeWidth={2.5} />}
+            {saved ? 'Saved' : 'Save Notes'}
           </button>
         </div>
       </main>
@@ -116,9 +114,5 @@ function PhotoDetailInner() {
 }
 
 export default function PhotoDetailPage() {
-  return (
-    <Suspense>
-      <PhotoDetailInner />
-    </Suspense>
-  );
+  return <Suspense><PhotoDetailInner /></Suspense>;
 }

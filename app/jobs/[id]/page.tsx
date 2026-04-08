@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getJob, getPhotosForJob, deletePhoto, Photo, Job, blobToUrl, addPhotoFromFile } from '@/lib/db';
 import { sharePDF, emailPDF } from '@/lib/pdf';
+import { IconCamera, IconImage, IconCheckSquare, IconShare, IconTrash, IconCheck, IconNote, IconChevronLeft, IconX } from '@/components/Icons';
 
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,7 +18,6 @@ export default function JobDetailPage() {
   const [exporting, setExporting] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Multi-select
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
@@ -35,20 +35,16 @@ export default function JobDetailPage() {
     return () => { Object.values(photoUrls).forEach((url) => URL.revokeObjectURL(url)); };
   }, [load]);
 
-  // --- Upload from camera roll ---
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     setUploading(true);
-    for (const file of files) {
-      await addPhotoFromFile(jobId, file);
-    }
+    for (const file of files) { await addPhotoFromFile(jobId, file); }
     await load();
     setUploading(false);
     e.target.value = '';
   };
 
-  // --- Select mode ---
   const toggleSelect = (photoId: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -57,12 +53,8 @@ export default function JobDetailPage() {
     });
   };
 
-  const exitSelectMode = () => {
-    setSelectMode(false);
-    setSelected(new Set());
-  };
+  const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
 
-  // --- Share selected photos via Web Share API ---
   const shareSelected = async () => {
     const selectedPhotos = photos.filter((p) => selected.has(p.id!));
     const files = selectedPhotos.map((p) => new File([p.blob], p.filename ?? `IMG_${p.id}.jpg`, { type: 'image/jpeg' }));
@@ -77,17 +69,13 @@ export default function JobDetailPage() {
     }
   };
 
-  // --- Delete selected ---
   const deleteSelected = async () => {
     if (!confirm(`Delete ${selected.size} photo(s)? This cannot be undone.`)) return;
-    for (const photoId of selected) {
-      await deletePhoto(photoId);
-    }
+    for (const photoId of selected) { await deletePhoto(photoId); }
     exitSelectMode();
     load();
   };
 
-  // --- PDF export ---
   const handleExport = async (method: 'share' | 'email') => {
     if (!job) return;
     setExporting(true);
@@ -108,7 +96,6 @@ export default function JobDetailPage() {
 
   return (
     <div className="flex flex-col bg-[#121212]" style={{ minHeight: '100dvh' }}>
-      {/* Header */}
       <header
         className="flex items-center gap-2 px-4 bg-[#1A1A1A] border-b border-[#2A2A2A] sticky top-0 z-10 flex-shrink-0"
         style={{ paddingTop: 'max(16px, env(safe-area-inset-top))', paddingBottom: '10px' }}
@@ -119,47 +106,34 @@ export default function JobDetailPage() {
             <span className="flex-1 text-center font-bold text-sm">
               {selected.size > 0 ? `${selected.size} selected` : 'Select Photos'}
             </span>
-            <button
-              onClick={deleteSelected}
-              disabled={selected.size === 0}
-              className="text-red-400 text-sm font-semibold disabled:opacity-30"
-            >Delete</button>
+            <button onClick={deleteSelected} disabled={selected.size === 0} className="text-red-400 text-sm font-semibold disabled:opacity-30">Delete</button>
           </>
         ) : (
           <>
-            <button onClick={() => router.push('/jobs')} className="text-[#4CAF50] text-sm font-semibold">‹ Jobs</button>
+            <button onClick={() => router.push('/jobs')} className="text-[#4CAF50] flex items-center gap-0.5 text-sm font-semibold">
+              <IconChevronLeft size={18} strokeWidth={2.5} /> Jobs
+            </button>
             <div className="flex-1 min-w-0">
               <p className="font-bold truncate text-sm">{job.name}</p>
               <p className="text-[#4CAF50] text-xs font-bold uppercase tracking-widest">{job.referenceCode}</p>
             </div>
             <Link href={`/jobs/${jobId}/edit`} className="text-[#aaa] text-xs px-2.5 py-1.5 bg-[#2A2A2A] rounded-lg">Edit</Link>
-            <button
-              onClick={showExportMenu}
-              disabled={exporting || photos.length === 0}
-              className="text-white text-xs px-2.5 py-1.5 bg-[#1565C0] rounded-lg disabled:opacity-40"
-            >{exporting ? '…' : 'PDF'}</button>
+            <button onClick={showExportMenu} disabled={exporting || photos.length === 0} className="text-white text-xs px-2.5 py-1.5 bg-[#1565C0] rounded-lg disabled:opacity-40">
+              {exporting ? '…' : 'PDF'}
+            </button>
           </>
         )}
       </header>
 
-      {/* Photo grid — slightly oversized cells so edges clip naturally */}
       <main className="flex-1" style={{ paddingBottom: selectMode ? 80 : 100 }}>
         {photos.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
-            <span className="text-5xl">📷</span>
+            <IconCamera size={48} className="text-[#333]" strokeWidth={1} />
             <p className="text-white font-semibold text-lg">No photos yet</p>
             <p className="text-[#888] text-sm">Tap the camera button to add photos</p>
           </div>
         ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 2,
-              // Extend slightly beyond right edge
-              marginRight: -2,
-            }}
-          >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, marginRight: -2 }}>
             {photos.map((photo) => {
               const isSelected = selected.has(photo.id!);
               return (
@@ -167,41 +141,24 @@ export default function JobDetailPage() {
                   key={photo.id}
                   className="relative"
                   style={{ aspectRatio: '1', overflow: 'hidden' }}
-                  onClick={() => {
-                    if (selectMode) { toggleSelect(photo.id!); }
-                    else { router.push(`/photo/${photo.id}?jobId=${jobId}`); }
-                  }}
+                  onClick={() => selectMode ? toggleSelect(photo.id!) : router.push(`/photo/${photo.id}?jobId=${jobId}`)}
                   onContextMenu={(e) => { e.preventDefault(); setSelectMode(true); toggleSelect(photo.id!); }}
                 >
                   <img
                     src={photoUrls[photo.id!]}
                     alt=""
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      display: 'block',
-                      // Scale up slightly so tiles feel bigger and bleed at bottom
-                      transform: 'scale(1.04)',
-                      transformOrigin: 'center center',
-                    }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scale(1.04)', transformOrigin: 'center center' }}
                   />
-
-                  {/* Selection overlay */}
-                  {selectMode && (
-                    <div className={`absolute inset-0 transition-colors ${isSelected ? 'bg-[#4CAF50]/30' : 'bg-transparent'}`} />
-                  )}
-
-                  {/* Checkmark */}
+                  {selectMode && <div className={`absolute inset-0 transition-colors ${isSelected ? 'bg-[#4CAF50]/30' : 'bg-transparent'}`} />}
                   {selectMode && (
                     <div className={`absolute top-1.5 right-1.5 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-[#4CAF50] border-[#4CAF50]' : 'bg-black/40 border-white'}`}>
-                      {isSelected && <span className="text-white text-xs font-bold">✓</span>}
+                      {isSelected && <IconCheck size={12} strokeWidth={3} className="text-white" />}
                     </div>
                   )}
-
-                  {/* Notes badge (non-select mode) */}
                   {!selectMode && photo.notes && (
-                    <div className="absolute bottom-1 right-1 bg-black/60 rounded-full w-5 h-5 flex items-center justify-center text-xs">✎</div>
+                    <div className="absolute bottom-1 right-1 bg-black/60 rounded-full w-5 h-5 flex items-center justify-center">
+                      <IconNote size={11} className="text-white" strokeWidth={1.5} />
+                    </div>
                   )}
                 </div>
               );
@@ -210,36 +167,24 @@ export default function JobDetailPage() {
         )}
       </main>
 
-      {/* Hidden file input for camera roll upload */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="hidden"
-        onChange={handleFileChange}
-      />
+      <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
 
-      {/* Bottom bar — changes based on mode */}
       {selectMode ? (
         <div
           className="fixed bottom-0 left-0 right-0 bg-[#1A1A1A] border-t border-[#2A2A2A] flex items-center justify-around px-6"
           style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))', paddingTop: 12 }}
         >
-          <button
-            onClick={shareSelected}
-            disabled={selected.size === 0}
-            className="flex flex-col items-center gap-1 disabled:opacity-30"
-          >
-            <span className="text-2xl">↗️</span>
+          <button onClick={shareSelected} disabled={selected.size === 0} className="flex flex-col items-center gap-1 disabled:opacity-30">
+            <IconShare size={24} className="text-white" />
             <span className="text-white text-xs font-semibold">Share {selected.size > 0 ? `(${selected.size})` : ''}</span>
           </button>
-          <button
-            onClick={() => { setSelected(new Set(photos.map((p) => p.id!))); }}
-            className="flex flex-col items-center gap-1"
-          >
-            <span className="text-2xl">☑️</span>
+          <button onClick={() => setSelected(new Set(photos.map((p) => p.id!)))} className="flex flex-col items-center gap-1">
+            <IconCheckSquare size={24} className="text-white" />
             <span className="text-white text-xs font-semibold">Select All</span>
+          </button>
+          <button onClick={deleteSelected} disabled={selected.size === 0} className="flex flex-col items-center gap-1 disabled:opacity-30">
+            <IconTrash size={24} className="text-red-400" />
+            <span className="text-red-400 text-xs font-semibold">Delete</span>
           </button>
         </div>
       ) : (
@@ -247,25 +192,15 @@ export default function JobDetailPage() {
           className="fixed bottom-0 left-0 right-0 flex items-center justify-around px-8"
           style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))', paddingTop: 12 }}
         >
-          {/* Upload from camera roll */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="w-12 h-12 rounded-full bg-[#1E1E1E] border border-[#2A2A2A] flex items-center justify-center text-xl disabled:opacity-40"
-          >{uploading ? '…' : '🖼️'}</button>
-
-          {/* Camera FAB */}
-          <Link
-            href={`/jobs/${jobId}/camera`}
-            className="w-16 h-16 rounded-full bg-[#4CAF50] flex items-center justify-center text-2xl shadow-lg"
-          >📷</Link>
-
-          {/* Select mode */}
-          <button
-            onClick={() => setSelectMode(true)}
-            disabled={photos.length === 0}
-            className="w-12 h-12 rounded-full bg-[#1E1E1E] border border-[#2A2A2A] flex items-center justify-center text-xl disabled:opacity-40"
-          >☑️</button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="w-12 h-12 rounded-full bg-[#1E1E1E] border border-[#2A2A2A] flex items-center justify-center text-white disabled:opacity-40">
+            {uploading ? <span className="text-xs">…</span> : <IconImage size={22} />}
+          </button>
+          <Link href={`/jobs/${jobId}/camera`} className="w-16 h-16 rounded-full bg-[#4CAF50] flex items-center justify-center text-white shadow-lg">
+            <IconCamera size={28} strokeWidth={1.5} />
+          </Link>
+          <button onClick={() => setSelectMode(true)} disabled={photos.length === 0} className="w-12 h-12 rounded-full bg-[#1E1E1E] border border-[#2A2A2A] flex items-center justify-center text-white disabled:opacity-40">
+            <IconCheckSquare size={22} />
+          </button>
         </div>
       )}
     </div>
