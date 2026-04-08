@@ -38,18 +38,17 @@ export default function CameraPage() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        await videoRef.current.play();
       }
     } catch {
-      setError('Camera access denied. Please allow camera access and reload.');
+      setError('Camera access denied. Please allow camera access in Safari settings and reload.');
     }
   }, []);
 
   useEffect(() => {
     getSetting('showTimestamp').then((v) => setShowTimestamp(v !== 'false'));
     startCamera('environment');
-
     const tick = setInterval(() => setNow(new Date()), 1000);
-
     return () => {
       clearInterval(tick);
       streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -74,7 +73,6 @@ export default function CameraPage() {
     const ctx = canvas.getContext('2d')!;
     ctx.drawImage(video, 0, 0);
 
-    // Stamp timestamp on the canvas if enabled
     if (showTimestamp) {
       const ts = formatTimestamp(new Date());
       const fontSize = Math.round(canvas.width * 0.022);
@@ -82,11 +80,10 @@ export default function CameraPage() {
       const padding = Math.round(fontSize * 0.5);
       const textW = ctx.measureText(ts).width;
       const boxX = padding;
-      const boxY = canvas.height - padding - fontSize * 2;
+      const boxY = canvas.height - padding * 3;
 
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(boxX - 6, boxY - fontSize, textW + 12, fontSize * 1.6);
-
       ctx.fillStyle = '#ffffff';
       ctx.fillText(ts, boxX, boxY + fontSize * 0.4);
     }
@@ -110,59 +107,80 @@ export default function CameraPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-black overflow-hidden">
-      {/* Camera feed */}
-      <div className="relative flex-1">
-        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover absolute inset-0" />
+    // Use 100dvh so it fills the full dynamic viewport on iOS (excludes browser chrome)
+    <div className="flex flex-col bg-black" style={{ height: '100dvh' }}>
+
+      {/* Top controls */}
+      <div
+        className="flex-shrink-0 flex justify-between items-center px-4 z-10"
+        style={{ paddingTop: 'max(16px, env(safe-area-inset-top))', paddingBottom: 12 }}
+      >
+        <button
+          onClick={() => router.back()}
+          className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white text-lg"
+        >✕</button>
+        <button
+          onClick={() => setShowTimestamp((v) => !v)}
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-lg transition-opacity ${showTimestamp ? 'bg-white/20' : 'bg-white/10 opacity-40'}`}
+        >🕐</button>
+      </div>
+
+      {/* Camera feed — fills all remaining space */}
+      <div className="relative flex-1 overflow-hidden">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* Top controls */}
-        <div className="absolute top-0 left-0 right-0 flex justify-between items-center p-4" style={{ paddingTop: 'max(16px, env(safe-area-inset-top))' }}>
-          <button onClick={() => router.back()} className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white text-lg">✕</button>
-          <button
-            onClick={() => setShowTimestamp((v) => !v)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${showTimestamp ? 'bg-black/50' : 'bg-black/20 opacity-40'}`}
-          >
-            🕐
-          </button>
-        </div>
-
-        {/* Bottom controls — fixed height bar so shutter never gets clipped */}
-        <div
-          className="absolute bottom-0 left-0 right-0 bg-black/70 flex items-center justify-around px-8"
-          style={{
-            paddingBottom: 'max(28px, env(safe-area-inset-bottom))',
-            paddingTop: 20,
-            minHeight: 120,
-          }}
-        >
-          <button onClick={flipCamera} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl text-white">⟳</button>
-
-          <button
-            onClick={takePhoto}
-            disabled={taking}
-            className="rounded-full border-4 border-white flex items-center justify-center disabled:opacity-50 flex-shrink-0"
-            style={{ width: 76, height: 76 }}
-          >
-            <div className={`rounded-full flex-shrink-0 ${taking ? 'bg-white/60' : 'bg-white'}`} style={{ width: 58, height: 58 }} />
-          </button>
-
-          <div className="w-12 h-12 flex flex-col items-center justify-center">
-            {count > 0 && (
-              <>
-                <span className="text-white font-bold text-lg leading-none">{count}</span>
-                <span className="text-[#aaa] text-xs">taken</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Timestamp overlay — sits just above the bottom bar */}
+        {/* Timestamp overlay */}
         {showTimestamp && (
-          <div className="absolute left-3 bg-black/55 px-2 py-1 rounded text-white text-xs font-mono pointer-events-none" style={{ bottom: 'calc(max(28px, env(safe-area-inset-bottom)) + 130px)' }}>
+          <div className="absolute bottom-3 left-3 bg-black/55 px-2 py-1 rounded text-white text-xs font-mono pointer-events-none">
             {formatTimestamp(now)}
           </div>
         )}
+      </div>
+
+      {/* Bottom controls — always fully visible above home indicator */}
+      <div
+        className="flex-shrink-0 bg-black flex items-center justify-around px-8"
+        style={{
+          paddingTop: 20,
+          paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
+          minHeight: 130,
+        }}
+      >
+        {/* Flip */}
+        <button
+          onClick={flipCamera}
+          className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl text-white flex-shrink-0"
+        >⟳</button>
+
+        {/* Shutter */}
+        <button
+          onClick={takePhoto}
+          disabled={taking}
+          className="rounded-full border-4 border-white flex items-center justify-center disabled:opacity-50 flex-shrink-0"
+          style={{ width: 80, height: 80 }}
+        >
+          <div
+            className={`rounded-full flex-shrink-0 transition-opacity ${taking ? 'opacity-50' : 'opacity-100'} bg-white`}
+            style={{ width: 62, height: 62 }}
+          />
+        </button>
+
+        {/* Count */}
+        <div className="w-12 h-12 flex flex-col items-center justify-center flex-shrink-0">
+          {count > 0 && (
+            <>
+              <span className="text-white font-bold text-xl leading-none">{count}</span>
+              <span className="text-[#aaa] text-xs mt-0.5">taken</span>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
