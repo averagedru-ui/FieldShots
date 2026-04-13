@@ -95,9 +95,9 @@ export default function JobDetailPage() {
   if (!job) return null;
 
   return (
-    <div className="flex flex-col bg-[#121212]" style={{ minHeight: '100dvh' }}>
+    <div className="flex flex-col bg-[#121212]" style={{ height: '100dvh', overflow: 'hidden' }}>
       <header
-        className="flex items-center gap-2 px-4 bg-[#1A1A1A] border-b border-[#2A2A2A] sticky top-0 z-10 flex-shrink-0"
+        className="flex items-center gap-2 px-4 bg-[#1A1A1A] border-b border-[#2A2A2A] z-10 flex-shrink-0"
         style={{ paddingTop: 'max(16px, env(safe-area-inset-top))', paddingBottom: '10px' }}
       >
         {selectMode ? (
@@ -125,7 +125,7 @@ export default function JobDetailPage() {
         )}
       </header>
 
-      <main className="flex-1" style={{ paddingBottom: selectMode ? 80 : 100 }}>
+      <main className="flex-1 overflow-y-auto" style={{ paddingBottom: selectMode ? 80 : 100 }}>
         {photos.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
             <IconCamera size={48} className="text-[#333]" strokeWidth={1} />
@@ -171,7 +171,7 @@ export default function JobDetailPage() {
 
       {selectMode ? (
         <div
-          className="fixed bottom-0 left-0 right-0 bg-[#1A1A1A] border-t border-[#2A2A2A] flex items-center justify-around px-6"
+          className="flex-shrink-0 bg-[#1A1A1A] border-t border-[#2A2A2A] flex items-center justify-around px-6"
           style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))', paddingTop: 12 }}
         >
           <button onClick={shareSelected} disabled={selected.size === 0} className="flex flex-col items-center gap-1 disabled:opacity-30">
@@ -189,7 +189,7 @@ export default function JobDetailPage() {
         </div>
       ) : (
         <div
-          className="fixed bottom-0 left-0 right-0 flex items-center justify-around px-8"
+          className="flex-shrink-0 bg-[#121212] flex items-center justify-around px-8"
           style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))', paddingTop: 12 }}
         >
           <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="w-12 h-12 rounded-full bg-[#1E1E1E] border border-[#2A2A2A] flex items-center justify-center text-white disabled:opacity-40">
